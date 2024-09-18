@@ -209,15 +209,17 @@ class VideoCombine:
         return {
             "required": {
                 "images": (imageOrLatent,),
+                "save_output": ("BOOLEAN", {"default": True}),
+                "output_folder": ("STRING", {"default": ""}),
+                "filename_prefix": ("STRING", {"default": "ComfyUI_"}),
+                "save_incremental": ("BOOLEAN", {"default": True}),
                 "frame_rate": (
                     "FLOAT",
                     {"default": 8, "min": 1, "step": 1},
                 ),
                 "loop_count": ("INT", {"default": 0, "min": 0, "max": 100, "step": 1}),
-                "filename_prefix": ("STRING", {"default": "AnimateDiff"}),
                 "format": (["image/gif", "image/webp"] + ffmpeg_formats,),
                 "pingpong": ("BOOLEAN", {"default": False}),
-                "save_output": ("BOOLEAN", {"default": True}),
             },
             "optional": {
                 "audio": ("AUDIO",),
@@ -243,10 +245,12 @@ class VideoCombine:
         loop_count: int,
         images=None,
         latents=None,
-        filename_prefix="AnimateDiff",
+        save_output=True,
+        output_folder="",
+        filename_prefix="ComfyUI_",
+        save_incremental=True,
         format="image/gif",
         pingpong=False,
-        save_output=True,
         prompt=None,
         extra_pnginfo=None,
         audio=None,
@@ -289,12 +293,21 @@ class VideoCombine:
         else:
             first_image = images[0]
             images = iter(images)
-        # get output information
-        output_dir = (
-            folder_paths.get_output_directory()
-            if save_output
-            else folder_paths.get_temp_directory()
-        )
+
+        # Check if output_folder is defined and not None, use it if so
+        if output_folder != "":
+            output_dir = (
+                output_folder
+                if save_output
+                else folder_paths.get_temp_directory()
+            )
+        else:
+            output_dir = (
+                folder_paths.get_output_directory()
+                if save_output
+                else folder_paths.get_temp_directory()
+            )
+
         (
             full_output_folder,
             filename,
@@ -302,6 +315,7 @@ class VideoCombine:
             subfolder,
             _,
         ) = folder_paths.get_save_image_path(filename_prefix, output_dir)
+
         output_files = []
 
         metadata = PngInfo()
@@ -338,7 +352,11 @@ class VideoCombine:
             output_process = None
 
         # save first frame as png to keep metadata
-        file = f"{filename}_{counter:05}.png"
+        if save_incremental == True:
+            file = f"{filename}_{counter:05}.png"
+        else:
+            file = f"{filename}.png"
+
         file_path = os.path.join(full_output_folder, file)
         Image.fromarray(tensor_to_bytes(first_image)).save(
             file_path,
@@ -359,7 +377,12 @@ class VideoCombine:
                 exif = Image.Exif()
                 exif[ExifTags.IFD.Exif] = {36867: datetime.datetime.now().isoformat(" ")[:19]}
                 image_kwargs['exif'] = exif
-            file = f"{filename}_{counter:05}.{format_ext}"
+                
+            if save_incremental == True:
+                file = f"{filename}_{counter:05}.{format_ext}"
+            else:
+                file = f"{filename}.{format_ext}"
+                
             file_path = os.path.join(full_output_folder, file)
             if pingpong:
                 images = to_pingpong(images)
@@ -440,7 +463,12 @@ class VideoCombine:
                     i_pix_fmt = 'rgba'
                 else:
                     i_pix_fmt = 'rgb24'
-            file = f"{filename}_{counter:05}.{video_format['extension']}"
+
+            if save_incremental == True:
+                file = f"{filename}_{counter:05}.{video_format['extension']}"
+            else:
+                file = f"{filename}.{video_format['extension']}"
+
             file_path = os.path.join(full_output_folder, file)
             bitrate_arg = []
             bitrate = video_format.get('bitrate')
